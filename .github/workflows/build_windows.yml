@@ -33,7 +33,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: 文档处理器-Windows
+        name: DocumentProcessor-Windows
         path: dist/DocumentProcessor.exe
         retention-days: 30
 
