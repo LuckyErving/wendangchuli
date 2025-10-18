@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# PyInstaller
+*.spec.backup
+*.manifest
+*.spec.orig
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Windows保留设备名
+nul
+con
+prn
+aux
+com[1-9]
+lpt[1-9]
+
+# 临时文件
+*.tmp
+*.bak
+*.log
+temp/
+tmp/
+
+# 压缩包（保留源文件）
+*.rar
+*.zip
+*.7z
+*.tar.gz
+
+# 测试输出
+test_output/
+output/
+pdf_temp_*/
