@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-文档处理器 - 简洁版本（解决透明窗口问题）
+文档处理器 
 """
 
 import os
