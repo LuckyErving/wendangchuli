@@ -5,6 +5,7 @@
 """
 
 import os
+import sys
 import re
 import shutil
 import tempfile
@@ -31,26 +32,112 @@ class LicenseManager:
     MAX_USAGE_COUNT = 200  # 最大使用次数
     
     def __init__(self):
-        # 使用隐藏的配置文件存储使用记录
+        # 多个存储位置（按优先级排序）
+        self.storage_locations = self._get_storage_locations()
+        self.config_file = None
+        self.config_dir = None
+        
+        # 找到第一个可写的位置
+        for location in self.storage_locations:
+            try:
+                config_dir = location['dir']
+                config_file = location['file']
+                
+                # 尝试创建目录
+                os.makedirs(config_dir, exist_ok=True)
+                
+                # 测试写入权限
+                test_file = os.path.join(config_dir, '.test')
+                with open(test_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_file)
+                
+                # 成功！使用这个位置
+                self.config_dir = config_dir
+                self.config_file = config_file
+                print(f"[授权] ✅ 使用存储位置: {location['name']}")
+                print(f"[授权] 配置目录: {self.config_dir}")
+                print(f"[授权] 配置文件: {self.config_file}")
+                break
+                
+            except Exception as e:
+                print(f"[授权] ⚠️ 位置 {location['name']} 不可用: {e}")
+                continue
+        
+        if not self.config_file:
+            # 所有位置都失败，使用临时目录作为最后手段
+            import tempfile
+            self.config_dir = tempfile.gettempdir()
+            self.config_file = os.path.join(self.config_dir, '.docproc_lic')
+            print(f"[授权] ⚠️ 使用临时目录: {self.config_file}")
+    
+    def _get_storage_locations(self):
+        """获取所有可能的存储位置（按优先级排序）"""
+        locations = []
+        
         if platform.system() == 'Windows':
+            # Windows: 多个备选位置
             appdata = os.environ.get('APPDATA', '')
-            if not appdata:
-                # 备用方案：使用用户目录
-                appdata = os.path.expanduser('~')
-            self.config_dir = os.path.join(appdata, '.docproc')
+            localappdata = os.environ.get('LOCALAPPDATA', '')
+            userprofile = os.environ.get('USERPROFILE', '')
+            programdata = os.environ.get('PROGRAMDATA', '')
+            
+            # 位置1: APPDATA (推荐)
+            if appdata:
+                locations.append({
+                    'name': 'APPDATA',
+                    'dir': os.path.join(appdata, '.docproc'),
+                    'file': os.path.join(appdata, '.docproc', '.lic')
+                })
+            
+            # 位置2: LOCALAPPDATA
+            if localappdata:
+                locations.append({
+                    'name': 'LOCALAPPDATA',
+                    'dir': os.path.join(localappdata, '.docproc'),
+                    'file': os.path.join(localappdata, '.docproc', '.lic')
+                })
+            
+            # 位置3: 用户目录
+            if userprofile:
+                locations.append({
+                    'name': 'USERPROFILE',
+                    'dir': os.path.join(userprofile, '.docproc'),
+                    'file': os.path.join(userprofile, '.docproc', '.lic')
+                })
+            
+            # 位置4: exe所在目录（便携模式）
+            try:
+                if getattr(sys, 'frozen', False):
+                    exe_dir = os.path.dirname(sys.executable)
+                else:
+                    exe_dir = os.path.dirname(os.path.abspath(__file__))
+                
+                locations.append({
+                    'name': 'EXE_DIR',
+                    'dir': os.path.join(exe_dir, '.config'),
+                    'file': os.path.join(exe_dir, '.config', '.lic')
+                })
+            except:
+                pass
+            
+            # 位置5: PROGRAMDATA (需要管理员权限，但试试看)
+            if programdata:
+                locations.append({
+                    'name': 'PROGRAMDATA',
+                    'dir': os.path.join(programdata, '.docproc'),
+                    'file': os.path.join(programdata, '.docproc', '.lic')
+                })
         else:
-            self.config_dir = os.path.join(os.path.expanduser('~'), '.docproc')
+            # macOS/Linux: 标准位置
+            home = os.path.expanduser('~')
+            locations.append({
+                'name': 'HOME',
+                'dir': os.path.join(home, '.docproc'),
+                'file': os.path.join(home, '.docproc', '.lic')
+            })
         
-        print(f"[授权] 配置目录: {self.config_dir}")
-        
-        try:
-            os.makedirs(self.config_dir, exist_ok=True)
-            print(f"[授权] 配置目录创建成功")
-        except Exception as e:
-            print(f"[授权] ⚠️ 创建配置目录失败: {e}")
-        
-        self.config_file = os.path.join(self.config_dir, '.lic')
-        print(f"[授权] 配置文件: {self.config_file}")
+        return locations
     
     def get_mac_address(self):
         """获取设备MAC地址"""
@@ -89,50 +176,103 @@ class LicenseManager:
         return hashlib.sha256(f"{mac}{salt}".encode()).hexdigest()
     
     def load_usage_data(self):
-        """加载使用记录"""
-        if not os.path.exists(self.config_file):
-            print(f"[授权] 配置文件不存在，首次使用")
-            return None
+        """加载使用记录（会尝试从所有可能的位置加载）"""
+        # 首先尝试从当前配置文件加载
+        if self.config_file and os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r') as f:
+                    encrypted = f.read()
+                data = self._decrypt_data(encrypted)
+                if data:
+                    print(f"[授权] ✅ 从当前位置加载成功，已使用 {data.get('count', 0)} 次")
+                    return data
+            except Exception as e:
+                print(f"[授权] ⚠️ 从当前位置加载失败: {e}")
         
-        try:
-            with open(self.config_file, 'r') as f:
-                encrypted = f.read()
-            data = self._decrypt_data(encrypted)
-            if data:
-                print(f"[授权] 配置加载成功，已使用 {data.get('count', 0)} 次")
-            return data
-        except Exception as e:
-            print(f"[授权] ⚠️ 加载配置失败: {e}")
-            return None
+        # 如果当前位置没有，尝试从其他所有位置加载（迁移数据）
+        print(f"[授权] 当前位置无配置，尝试从其他位置迁移...")
+        for location in self.storage_locations:
+            if location['file'] == self.config_file:
+                continue  # 跳过当前位置
+            
+            if os.path.exists(location['file']):
+                try:
+                    with open(location['file'], 'r') as f:
+                        encrypted = f.read()
+                    data = self._decrypt_data(encrypted)
+                    if data:
+                        print(f"[授权] ✅ 从 {location['name']} 找到旧配置: count={data.get('count', 0)}")
+                        # 尝试迁移到当前位置
+                        if self.save_usage_data(data):
+                            print(f"[授权] ✅ 数据已迁移到当前位置")
+                        return data
+                except Exception as e:
+                    print(f"[授权] 从 {location['name']} 加载失败: {e}")
+                    continue
+        
+        print(f"[授权] 所有位置都没有配置，首次使用")
+        return None
     
     def save_usage_data(self, data: dict):
         """保存使用记录"""
-        try:
-            print(f"[授权] 准备保存: count={data.get('count', 0)}")
-            encrypted = self._encrypt_data(data)
-            
-            # 确保目录存在
-            if not os.path.exists(self.config_dir):
-                os.makedirs(self.config_dir, exist_ok=True)
-                print(f"[授权] 重新创建配置目录")
-            
-            with open(self.config_file, 'w') as f:
-                f.write(encrypted)
-            
-            print(f"[授权] ✅ 保存成功: {self.config_file}")
-            
-            # 设置为隐藏文件（Windows）
-            if platform.system() == 'Windows':
-                try:
-                    import ctypes
-                    ctypes.windll.kernel32.SetFileAttributesW(self.config_file, 2)  # FILE_ATTRIBUTE_HIDDEN
-                    print(f"[授权] 文件已设置为隐藏")
-                except Exception as e:
-                    print(f"[授权] 设置隐藏属性失败: {e}")
-        except Exception as e:
-            print(f"[授权] ❌ 保存使用记录失败: {e}")
-            import traceback
-            traceback.print_exc()
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"[授权] 保存尝试 {attempt + 1}/{max_retries}: count={data.get('count', 0)}")
+                encrypted = self._encrypt_data(data)
+                
+                # 确保目录存在
+                if not os.path.exists(self.config_dir):
+                    os.makedirs(self.config_dir, exist_ok=True)
+                    print(f"[授权] 创建配置目录")
+                
+                # 写入临时文件然后重命名（原子操作）
+                temp_file = self.config_file + '.tmp'
+                
+                with open(temp_file, 'w') as f:
+                    f.write(encrypted)
+                    f.flush()  # 强制刷新缓冲区
+                    os.fsync(f.fileno())  # 强制同步到磁盘
+                
+                # 原子替换
+                if os.path.exists(self.config_file):
+                    os.remove(self.config_file)
+                os.rename(temp_file, self.config_file)
+                
+                print(f"[授权] ✅ 写入完成: {self.config_file}")
+                
+                # 立即验证写入是否成功
+                verify_data = self.load_usage_data()
+                if verify_data and verify_data.get('count') == data.get('count'):
+                    print(f"[授权] ✅✅ 验证成功: count={verify_data.get('count')}")
+                    
+                    # 设置为隐藏文件（Windows）
+                    if platform.system() == 'Windows':
+                        try:
+                            import ctypes
+                            ctypes.windll.kernel32.SetFileAttributesW(self.config_file, 2)
+                            print(f"[授权] 文件已隐藏")
+                        except:
+                            pass
+                    
+                    return True
+                else:
+                    print(f"[授权] ⚠️ 验证失败: 保存的={data.get('count')}, 读取的={verify_data.get('count') if verify_data else 'None'}")
+                    continue
+                    
+            except Exception as e:
+                print(f"[授权] ❌ 保存失败 (尝试 {attempt + 1}): {e}")
+                import traceback
+                traceback.print_exc()
+                
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(0.1)  # 短暂延迟后重试
+                continue
+        
+        print(f"[授权] ❌❌ 所有保存尝试均失败！")
+        return False
     
     def check_device(self) -> Tuple[bool, str]:
         """
@@ -211,7 +351,13 @@ class LicenseManager:
         
         print(f"[授权] 更新使用次数: {current_count} → {usage_data['count']}")
         
-        self.save_usage_data(usage_data)
+        # 保存并验证
+        save_success = self.save_usage_data(usage_data)
+        
+        if not save_success:
+            print(f"[授权] ⚠️⚠️ 保存失败，但允许本次使用")
+            # 即使保存失败，也允许本次使用（但不计数）
+            # 这样用户不会因为文件权限问题无法使用程序
         
         remaining = self.MAX_USAGE_COUNT - usage_data['count']
         print(f"[授权] ✅ 检查通过，剩余次数: {remaining}")

@@ -56,4 +56,10 @@ test_output/
 output/
 pdf_temp_*/
 
+# 授权配置（敏感信息）
+license_config.py
+.gist_config
+.docproc/
+.docproc_cache/
+
 630222203210020071(李时海)/
