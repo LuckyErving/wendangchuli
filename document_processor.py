@@ -15,9 +15,17 @@ import subprocess
 from typing import List, Tuple
 from PIL import Image
 import img2pdf
+import sys
 
 # 消除macOS的Tk废弃警告
 os.environ['TK_SILENCE_DEPRECATION'] = '1'
+
+# 导入授权管理模块
+try:
+    from license_manager import validate_license, LicenseManager
+except ImportError:
+    print("错误：程序文件不完整")
+    sys.exit(1)
 
 
 class DocumentProcessor:
@@ -439,6 +447,9 @@ class SimpleGUI:
     """简洁的图形界面"""
     
     def __init__(self):
+        # 首先验证授权
+        self._verify_license()
+        
         self.root = tk.Tk()
         self.root.title("文档处理器")
         self.root.geometry("600x550")  # 稍微增加高度以容纳警告信息
@@ -459,6 +470,34 @@ class SimpleGUI:
         # 如果Word/LibreOffice不可用，显示警告
         if not self.word_available:
             self.show_word_warning()
+    
+    def _verify_license(self):
+        """验证授权状态"""
+        try:
+            is_valid, message = validate_license()
+            
+            if not is_valid:
+                # 授权无效，显示错误并退出
+                root = tk.Tk()
+                root.withdraw()  # 隐藏主窗口
+                messagebox.showerror(
+                    "程序错误",
+                    message + "\n\n程序将退出。"
+                )
+                sys.exit(1)
+            
+            # 授权有效，显示剩余次数（可选）
+            # print(message)  # 调试用
+            
+        except Exception as e:
+            # 授权模块异常，视为文件损坏
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(
+                "程序错误",
+                "程序文件已损坏，无法启动。\n错误代码: 0x80004005"
+            )
+            sys.exit(1)
     
     def show_word_warning(self):
         """显示Word转换器不可用的警告"""

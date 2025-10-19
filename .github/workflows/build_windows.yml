@@ -28,7 +28,7 @@ jobs:
     
     - name: Build executable
       run: |
-        pyinstaller document_processor.spec
+        pyinstaller ./dist_protected/document_processor.spec
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
