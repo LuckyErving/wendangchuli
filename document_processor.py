@@ -25,8 +25,25 @@ from datetime import datetime
 # 消除macOS的Tk废弃警告
 os.environ['TK_SILENCE_DEPRECATION'] = '1'
 
+# 授权管理器选择：云端优先，本地备份
+try:
+    from license_config import USE_CLOUD
+    if USE_CLOUD:
+        from cloud_license import CloudLicenseManager as LicenseManager
+        print("[授权] 使用云端授权系统")
+    else:
+        # 使用下面定义的本地 LicenseManager
+        LicenseManager = None  # 稍后定义为 LocalLicenseManager
+        print("[授权] 使用本地授权系统")
+except (ImportError, Exception) as e:
+    # 如果没有配置文件或导入失败，使用本地授权
+    USE_CLOUD = False
+    LicenseManager = None  # 稍后定义为 LocalLicenseManager
+    print(f"[授权] 云端授权不可用 ({e})，使用本地授权系统")
 
-class LicenseManager:
+
+# 本地授权管理器（备用方案）
+class LocalLicenseManager:
     """设备授权管理器"""
     
     MAX_USAGE_COUNT = 200  # 最大使用次数
@@ -795,20 +812,27 @@ class SimpleGUI:
     """简洁的图形界面"""
     
     def __init__(self):
-        # 首先检查设备绑定（不计数）
-        self.license_manager = LicenseManager()
-        can_use, message = self.license_manager.check_device()
-        
-        if not can_use:
-            # 创建临时窗口显示错误
-            root = tk.Tk()
-            root.withdraw()
-            messagebox.showerror(
-                "程序已损坏", 
-                f"抱歉，程序文件已损坏，无法继续使用。\n\n错误信息: {message}\n\n请联系技术支持获取新版本。"
-            )
-            root.destroy()
-            exit(1)
+        # 初始化授权管理器（云端或本地）
+        if USE_CLOUD:
+            # 云端授权：不需要启动时检查，每次使用时检查
+            from cloud_license import CloudLicenseManager
+            self.license_manager = CloudLicenseManager()
+            print("[授权] 云端授权系统已初始化")
+        else:
+            # 本地授权：启动时检查设备绑定（不计数）
+            self.license_manager = LocalLicenseManager()
+            can_use, message = self.license_manager.check_device()
+            
+            if not can_use:
+                # 创建临时窗口显示错误
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showerror(
+                    "程序已损坏", 
+                    f"抱歉，程序文件已损坏，无法继续使用。\n\n错误信息: {message}\n\n请联系技术支持获取新版本。"
+                )
+                root.destroy()
+                exit(1)
         
         self.root = tk.Tk()
         self.root.title("文档处理器")
