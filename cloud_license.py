@@ -312,26 +312,11 @@ class CloudLicenseManager:
         print(f"[云授权] ✅ 检查通过，剩余次数: {remaining}")
         print(f"[云授权] ========== 检查完成 ==========\n")
         
-        return True, f"剩余次数: {remaining}"
+        return True, "验证通过"
     
     def get_usage_info(self) -> str:
-        """获取使用信息"""
-        # 优先从云端获取
-        all_data = self._load_from_cloud()
-        if all_data is None:
-            all_data = self._load_from_cache()
-        
-        if all_data is None:
-            return f"剩余使用次数: {self.MAX_USAGE_COUNT}"
-        
-        device_data = self._get_device_data(all_data)
-        if device_data is None:
-            return f"剩余使用次数: {self.MAX_USAGE_COUNT}"
-        
-        count = device_data.get('count', 0)
-        remaining = self.MAX_USAGE_COUNT - count
-        return f"-"
-        # return f"已使用: {count} 次，剩余: {remaining} 次"
+        """获取使用信息（不显示具体次数）"""
+        return "正常"
 
 
 # 测试代码
