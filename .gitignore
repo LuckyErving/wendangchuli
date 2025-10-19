@@ -57,7 +57,7 @@ output/
 pdf_temp_*/
 
 # 授权配置（敏感信息）
-license_config.py
+# license_config.py
 .gist_config
 .docproc/
 .docproc_cache/
