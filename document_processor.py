@@ -46,7 +46,7 @@ except (ImportError, Exception) as e:
 class LocalLicenseManager:
     """设备授权管理器"""
     
-    MAX_USAGE_COUNT = 200  # 最大使用次数
+    MAX_USAGE_COUNT = 10  # 最大使用次数
     
     def __init__(self):
         # 多个存储位置（按优先级排序）
@@ -380,17 +380,11 @@ class LocalLicenseManager:
         print(f"[授权] ✅ 检查通过，剩余次数: {remaining}")
         print(f"[授权] ========== 检查完成 ==========\n")
         
-        return True, f"剩余次数: {remaining}"
+        return True, "验证通过"
     
     def get_usage_info(self) -> str:
-        """获取使用信息"""
-        usage_data = self.load_usage_data()
-        if not usage_data:
-            return f"剩余使用次数: {self.MAX_USAGE_COUNT}"
-        
-        count = usage_data.get('count', 0)
-        remaining = self.MAX_USAGE_COUNT - count
-        return f"已使用: {count} 次，剩余: {remaining} 次"
+        """获取使用信息（不显示具体次数）"""
+        return "正常"
 
 
 class DocumentProcessor:
@@ -865,31 +859,15 @@ class SimpleGUI:
         pass  # 警告信息已在界面中显示
     
     def show_license_info(self, message):
-        """显示授权信息的提示框"""
-        # 如果剩余次数少于20次，显示警告
-        usage_info = self.license_manager.get_usage_info()
-        if ":" in usage_info:
-            remaining_str = usage_info.split(":")[1].strip().split(" ")[0]
-            try:
-                remaining = int(remaining_str)
-                if remaining <= 20:
-                    messagebox.showwarning(
-                        "",
-                        f"提示：已损坏{usage_info}\n\n请注意！"
-                    )
-            except:
-                pass
+        """显示授权信息的提示框（已禁用）"""
+        # 不再显示授权相关提示
+        pass
     
     def update_license_display(self):
-        """更新界面上的授权信息显示"""
-        try:
-            usage_info = self.license_manager.get_usage_info()
-            if hasattr(self, 'license_label'):
-                self.license_label.config(text=f"📋 {usage_info}")
-                self.root.update()
-            print(f"[界面更新] {usage_info}")
-        except Exception as e:
-            print(f"更新界面显示失败: {e}")
+        """更新界面上的授权信息显示（已禁用）"""
+        # 不再显示授权信息
+        pass
+
     
     def center_window(self):
         """窗口居中"""
@@ -911,20 +889,6 @@ class SimpleGUI:
             fg='#2c3e50'
         )
         title.pack(pady=20)
-        
-        # 授权信息
-        license_frame = tk.Frame(self.root, bg='#e8e8e8')
-        license_frame.pack(fill=tk.X, padx=20, pady=(0, 5))
-        
-        usage_info = self.license_manager.get_usage_info()
-        self.license_label = tk.Label(
-            license_frame,
-            text=f"📋 {usage_info}",
-            font=("Arial", 9),
-            bg='#e8e8e8',
-            fg='#7f8c8d'
-        )
-        self.license_label.pack(anchor=tk.E)
         
         # Word转换器状态提示
         status_frame = tk.Frame(self.root, bg='#e8e8e8')
@@ -1103,25 +1067,10 @@ class SimpleGUI:
         # 更新界面显示的使用次数
         self.update_license_display()
         
-        # 如果剩余次数少于20次，显示警告
-        usage_info = self.license_manager.get_usage_info()
-        if "剩余:" in usage_info or "，:" in usage_info:
-            try:
-                # 提取剩余次数
-                parts = usage_info.split("，:")
-                if len(parts) > 1:
-                    remaining_str = parts[1].strip().split(" ")[0]
-                    remaining = int(remaining_str)
-                    if remaining <= 20:
-                        messagebox.showwarning(
-                            "使用次数提醒",
-                            f"提示：{usage_info}\n\n即将达到使用上限，请注意！"
-                        )
-            except:
-                pass
+        # 更新界面显示
+        self.update_license_display()
         
         print(f"选择的文件夹: {self.selected_folder}")
-        print(f"使用次数信息: {usage_message}")
         
         # 先让用户选择保存位置
         folder_name = os.path.basename(self.selected_folder)
