@@ -27,9 +27,9 @@ class CloudLicenseManager:
             self.MAX_USAGE_COUNT = MAX_USAGE_COUNT
             self.TIMEOUT = TIMEOUT
         except ImportError:
-            # 如果没有配置文件，使用默认值
+            # 如果没有配置文件，使用默认值（从环境变量读取）
             self.GITHUB_TOKEN = os.environ.get('DOC_PROC_GITHUB_TOKEN', '')
-            self.MAX_USAGE_COUNT = 20
+            self.MAX_USAGE_COUNT = 200  # 默认200次
             self.TIMEOUT = 5
         
         self.GIST_ID = None
