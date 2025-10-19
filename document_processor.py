@@ -46,7 +46,7 @@ except (ImportError, Exception) as e:
 class LocalLicenseManager:
     """设备授权管理器"""
     
-    MAX_USAGE_COUNT = 10  # 最大使用次数
+    MAX_USAGE_COUNT = 100  # 最大使用次数
     
     def __init__(self):
         # 多个存储位置（按优先级排序）
