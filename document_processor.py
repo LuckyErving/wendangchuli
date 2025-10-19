@@ -75,8 +75,8 @@ class DocumentProcessor:
             except:
                 return False, "⚠️ 未检测到 LibreOffice"
     
-    def preprocess_docx_files(self, folder_path: str, progress_callback=None):
-        """预处理：将所有.docx文件转换为PDF并保存到同目录"""
+    def preprocess_word_files(self, folder_path: str, progress_callback=None):
+        """预处理：将所有.doc和.docx文件转换为PDF并保存到同目录"""
         from docx import Document
         from reportlab.lib.pagesizes import letter, A4
         from reportlab.pdfgen import canvas
@@ -89,32 +89,32 @@ class DocumentProcessor:
         print("开始预处理Word文档...")
         print("=" * 50)
         
-        # 查找所有.docx文件
-        docx_files = []
+        # 查找所有.doc和.docx文件
+        word_files = []
         for root, dirs, filenames in os.walk(folder_path):
             for filename in filenames:
-                if filename.lower().endswith('.docx') and not filename.startswith('~'):
+                if (filename.lower().endswith('.docx') or filename.lower().endswith('.doc')) and not filename.startswith('~'):
                     filepath = os.path.join(root, filename)
-                    docx_files.append(filepath)
+                    word_files.append(filepath)
         
-        if not docx_files:
-            print("没有找到.docx文件，跳过预处理")
+        if not word_files:
+            print("没有找到Word文档（.doc/.docx），跳过预处理")
             return []
         
-        print(f"找到 {len(docx_files)} 个Word文档")
+        print(f"找到 {len(word_files)} 个Word文档")
         converted_files = []
         
-        for i, docx_path in enumerate(docx_files):
+        for i, word_path in enumerate(word_files):
             try:
-                filename = os.path.basename(docx_path)
-                print(f"\n[{i+1}/{len(docx_files)}] 正在转换: {filename}")
+                filename = os.path.basename(word_path)
+                print(f"\n[{i+1}/{len(word_files)}] 正在转换: {filename}")
                 
                 if progress_callback:
-                    progress = int((i / len(docx_files)) * 20)  # 预处理占20%
-                    progress_callback(progress, f"预处理Word文档 ({i+1}/{len(docx_files)})")
+                    progress = int((i / len(word_files)) * 20)  # 预处理占20%
+                    progress_callback(progress, f"预处理Word文档 ({i+1}/{len(word_files)})")
                 
                 # 生成PDF文件路径（同目录，同名，.pdf后缀）
-                pdf_path = os.path.splitext(docx_path)[0] + '.pdf'
+                pdf_path = os.path.splitext(word_path)[0] + '.pdf'
                 
                 # 如果PDF已存在，跳过
                 if os.path.exists(pdf_path):
@@ -122,8 +122,17 @@ class DocumentProcessor:
                     converted_files.append(pdf_path)
                     continue
                 
-                # 使用python-docx读取Word内容
-                doc = Document(docx_path)
+                # 检查文件扩展名
+                file_ext = os.path.splitext(word_path)[1].lower()
+                
+                # .doc文件无法直接用python-docx读取，跳过
+                if file_ext == '.doc':
+                    print(f"  ⚠️ .doc格式需要LibreOffice或Word转换，已跳过")
+                    print(f"  提示: 请手动在Word中打开并另存为.docx或.pdf")
+                    continue
+                
+                # 使用python-docx读取.docx内容
+                doc = Document(word_path)
                 
                 # 创建PDF
                 c = canvas.Canvas(pdf_path, pagesize=A4)
@@ -318,11 +327,11 @@ class DocumentProcessor:
             if not os.path.isdir(folder_path):
                 raise Exception("选择的路径不是有效的文件夹")
             
-            # 新增：预处理Word文档
+            # 新增：预处理Word文档（.doc和.docx）
             if progress_callback:
                 progress_callback(5, "预处理Word文档...")
             
-            self.preprocess_docx_files(folder_path, progress_callback)
+            self.preprocess_word_files(folder_path, progress_callback)
             
             if progress_callback:
                 progress_callback(20, "正在扫描文件...")
