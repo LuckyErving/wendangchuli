@@ -134,38 +134,59 @@ class DocumentProcessor:
                 # 使用python-docx读取.docx内容
                 doc = Document(word_path)
                 
-                # 创建PDF
-                c = canvas.Canvas(pdf_path, pagesize=A4)
-                width, height = A4
+                # 创建PDF，使用支持中文的方式
+                from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                from reportlab.lib.enums import TA_LEFT, TA_CENTER
                 
-                # 设置字体（使用系统自带字体）
-                try:
-                    c.setFont("Helvetica", 12)
-                except:
-                    pass
+                # 创建PDF文档
+                pdf_doc = SimpleDocTemplate(pdf_path, pagesize=A4)
+                story = []
                 
-                y_position = height - 50
-                line_height = 20
+                # 注册中文字体
+                pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
                 
-                # 写入文档内容
-                c.drawString(50, y_position, f"Document: {filename}")
-                y_position -= line_height * 2
+                # 创建样式
+                styles = getSampleStyleSheet()
+                chinese_style = ParagraphStyle(
+                    'Chinese',
+                    parent=styles['Normal'],
+                    fontName='STSong-Light',
+                    fontSize=12,
+                    leading=20,
+                    alignment=TA_LEFT,
+                )
                 
+                title_style = ParagraphStyle(
+                    'ChineseTitle',
+                    parent=styles['Heading1'],
+                    fontName='STSong-Light',
+                    fontSize=16,
+                    leading=24,
+                    alignment=TA_CENTER,
+                )
+                
+                # 添加标题
+                story.append(Paragraph(filename, title_style))
+                story.append(Spacer(1, 20))
+                
+                # 添加段落内容
                 for paragraph in doc.paragraphs:
                     if paragraph.text.strip():
-                        text = paragraph.text[:100]  # 限制长度
+                        # 转义特殊字符
+                        text = paragraph.text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                         try:
-                            c.drawString(50, y_position, text)
-                            y_position -= line_height
-                            
-                            if y_position < 50:  # 换页
-                                c.showPage()
-                                y_position = height - 50
-                        except:
-                            # 如果有特殊字符，跳过
-                            pass
+                            p = Paragraph(text, chinese_style)
+                            story.append(p)
+                            story.append(Spacer(1, 12))
+                        except Exception as e:
+                            # 如果某个段落出错，跳过
+                            print(f"    警告: 段落处理失败，已跳过")
+                            continue
                 
-                c.save()
+                # 生成PDF
+                pdf_doc.build(story)
                 converted_files.append(pdf_path)
                 print(f"  ✓ 转换成功: {os.path.basename(pdf_path)}")
                 
