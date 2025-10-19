@@ -35,7 +35,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='文档处理器',
+    name='DocumentProcessor',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

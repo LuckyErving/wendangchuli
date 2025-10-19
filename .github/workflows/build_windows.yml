@@ -25,11 +25,18 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
+        pip install pyarmor==9.1.9
     
-    - name: Build executable
+    - name: Obfuscate code with PyArmor
       run: |
-        pyinstaller document_processor.spec
-    
+        python -m pyarmor gen --output dist_protected document_processor.py license_manager.py
+        copy dist_protected\document_processor.py document_processor.py
+        copy dist_protected\license_manager.py license_manager.py
+        xcopy /E /I dist_protected\pyarmor_runtime_000000 pyarmor_runtime_000000
+        
+    - name: Build executable
+      run: pyinstaller document_processor.spec
+      
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
