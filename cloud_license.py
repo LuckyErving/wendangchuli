@@ -29,7 +29,7 @@ class CloudLicenseManager:
         except ImportError:
             # 如果没有配置文件，使用默认值
             self.GITHUB_TOKEN = os.environ.get('DOC_PROC_GITHUB_TOKEN', '')
-            self.MAX_USAGE_COUNT = 200
+            self.MAX_USAGE_COUNT = 20
             self.TIMEOUT = 5
         
         self.GIST_ID = None
@@ -330,7 +330,8 @@ class CloudLicenseManager:
         
         count = device_data.get('count', 0)
         remaining = self.MAX_USAGE_COUNT - count
-        return f"已使用: {count} 次，剩余: {remaining} 次"
+        return f"-"
+        # return f"已使用: {count} 次，剩余: {remaining} 次"
 
 
 # 测试代码
