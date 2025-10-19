@@ -25,18 +25,23 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
-        pip install pyarmor
     
-    - name: Obfuscate code with PyArmor
-      run: |
-        pyarmor gen --output dist_protected document_processor.py license_manager.py
-        Copy-Item -Path "dist_protected\document_processor.py" -Destination "document_processor.py" -Force
-        Copy-Item -Path "dist_protected\license_manager.py" -Destination "license_manager.py" -Force
-        if (Test-Path "pyarmor_runtime_000000") { Remove-Item -Recurse -Force "pyarmor_runtime_000000" }
-        Copy-Item -Path "dist_protected\pyarmor_runtime_000000" -Destination "pyarmor_runtime_000000" -Recurse -Force
-        
     - name: Build executable
-      run: pyinstaller document_processor.spec
+      run: |
+        pyinstaller --clean --onefile --windowed `
+          --name DocumentProcessor `
+          --hidden-import=PIL._tkinter_finder `
+          --hidden-import=tkinter `
+          --hidden-import=tkinter.filedialog `
+          --hidden-import=tkinter.messagebox `
+          --hidden-import=PIL `
+          --hidden-import=img2pdf `
+          --hidden-import=PyPDF2 `
+          --hidden-import=docx `
+          --hidden-import=reportlab `
+          --collect-all=PIL `
+          --collect-all=reportlab `
+          document_processor.py
       
     - name: Upload artifact
       uses: actions/upload-artifact@v4
