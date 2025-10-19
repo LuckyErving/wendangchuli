@@ -41,40 +41,6 @@ class DocumentProcessor:
     def __init__(self):
         self.temp_dir = None
     
-    @staticmethod
-    def check_word_converter():
-        """检测Word转换器是否可用"""
-        import platform
-        is_windows = platform.system() == 'Windows'
-        
-        if is_windows:
-            # 检查Windows上的docx2pdf和Word
-            try:
-                import docx2pdf
-                # 尝试检测Word是否安装（通过COM）
-                try:
-                    import win32com.client
-                    word = win32com.client.Dispatch("Word.Application")
-                    word.Quit()
-                    return True, "✅ Microsoft Word 已安装"
-                except:
-                    return False, "⚠️ 未检测到 Microsoft Word\n\n程序无法转换 .docx 文件为PDF。\n\n解决方案：\n1. 安装 Microsoft Word (Office)\n2. 或手动将 .docx 转换为 .pdf\n\n其他文件(PDF、图片)可以正常处理。"
-            except ImportError:
-                return False, "⚠️ 缺少 docx2pdf 库"
-        else:
-            # 检查macOS/Linux上的LibreOffice
-            try:
-                result = subprocess.run(['which', 'soffice'], 
-                                      capture_output=True, 
-                                      text=True, 
-                                      timeout=5)
-                if result.returncode == 0:
-                    return True, "✅ LibreOffice 已安装"
-                else:
-                    return False, "⚠️ 未检测到 LibreOffice\n\n程序无法转换 .docx 文件为PDF。\n\n解决方案：\n安装 LibreOffice:\nbrew install --cask libreoffice\n\n或手动下载：\nhttps://www.libreoffice.org/\n\n其他文件(PDF、图片)可以正常处理。"
-            except:
-                return False, "⚠️ 未检测到 LibreOffice"
-    
     def find_files(self, directory: str) -> List[str]:
         """递归查找所有文件"""
         files = []
@@ -312,7 +278,7 @@ class SimpleGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("文档处理器")
-        self.root.geometry("600x550")  # 稍微增加高度以容纳警告信息
+        self.root.geometry("600x500")
         
         # 强制设置背景色
         self.root.configure(bg='#e8e8e8')
@@ -321,27 +287,14 @@ class SimpleGUI:
         self.selected_folder = None
         self.output_pdf_path = None
         
-        # 检测Word转换器
-        self.word_available, self.word_message = DocumentProcessor.check_word_converter()
-        
         self.create_widgets()
         self.center_window()
-        
-        # 如果Word/LibreOffice不可用，显示警告
-        if not self.word_available:
-            self.show_word_warning()
-    
-    def show_word_warning(self):
-        """显示Word转换器不可用的警告"""
-        # 不立即弹窗，而是在界面上显示警告信息
-        # 用户可以选择继续（如果没有Word文档）或退出安装
-        pass  # 警告信息已在界面中显示
     
     def center_window(self):
         """窗口居中"""
         self.root.update_idletasks()
         width = 600
-        height = 550
+        height = 500
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f'{width}x{height}+{x}+{y}')
@@ -357,44 +310,6 @@ class SimpleGUI:
             fg='#2c3e50'
         )
         title.pack(pady=20)
-        
-        # Word转换器状态提示
-        status_frame = tk.Frame(self.root, bg='#e8e8e8')
-        status_frame.pack(fill=tk.X, padx=20, pady=(0, 10))
-        
-        if self.word_available:
-            status_text = self.word_message
-            status_color = '#27ae60'  # 绿色
-        else:
-            status_text = self.word_message.split('\n')[0]  # 只显示第一行
-            status_color = '#e67e22'  # 橙色
-        
-        status_label = tk.Label(
-            status_frame,
-            text=status_text,
-            font=("Arial", 10),
-            bg='#e8e8e8',
-            fg=status_color,
-            wraplength=550,
-            justify=tk.LEFT
-        )
-        status_label.pack(anchor=tk.W)
-        
-        # 如果Word不可用，显示详细说明按钮
-        if not self.word_available:
-            help_btn = tk.Button(
-                status_frame,
-                text="查看详细说明",
-                command=self.show_word_help,
-                bg='#3498db',
-                fg='white',
-                font=("Arial", 9),
-                cursor='hand2',
-                relief=tk.FLAT,
-                padx=10,
-                pady=2
-            )
-            help_btn.pack(anchor=tk.W, pady=(5, 0))
         
         # 步骤1
         frame1 = tk.LabelFrame(
@@ -480,13 +395,6 @@ class SimpleGUI:
             fg='#7f8c8d'
         )
         self.progress_label.pack(pady=10)
-    
-    def show_word_help(self):
-        """显示Word转换器帮助信息"""
-        messagebox.showinfo(
-            "Word转换器说明",
-            self.word_message + "\n\n如果文件夹中没有.docx文件，\n可以直接继续使用。\n\nPDF和图片文件不受影响。"
-        )
     
     def select_folder(self):
         """选择文件夹"""
