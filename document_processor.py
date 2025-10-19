@@ -33,12 +33,24 @@ class LicenseManager:
     def __init__(self):
         # 使用隐藏的配置文件存储使用记录
         if platform.system() == 'Windows':
-            self.config_dir = os.path.join(os.environ.get('APPDATA', ''), '.docproc')
+            appdata = os.environ.get('APPDATA', '')
+            if not appdata:
+                # 备用方案：使用用户目录
+                appdata = os.path.expanduser('~')
+            self.config_dir = os.path.join(appdata, '.docproc')
         else:
             self.config_dir = os.path.join(os.path.expanduser('~'), '.docproc')
         
-        os.makedirs(self.config_dir, exist_ok=True)
+        print(f"[授权] 配置目录: {self.config_dir}")
+        
+        try:
+            os.makedirs(self.config_dir, exist_ok=True)
+            print(f"[授权] 配置目录创建成功")
+        except Exception as e:
+            print(f"[授权] ⚠️ 创建配置目录失败: {e}")
+        
         self.config_file = os.path.join(self.config_dir, '.lic')
+        print(f"[授权] 配置文件: {self.config_file}")
     
     def get_mac_address(self):
         """获取设备MAC地址"""
@@ -79,30 +91,48 @@ class LicenseManager:
     def load_usage_data(self):
         """加载使用记录"""
         if not os.path.exists(self.config_file):
+            print(f"[授权] 配置文件不存在，首次使用")
             return None
         
         try:
             with open(self.config_file, 'r') as f:
                 encrypted = f.read()
-            return self._decrypt_data(encrypted)
-        except:
+            data = self._decrypt_data(encrypted)
+            if data:
+                print(f"[授权] 配置加载成功，已使用 {data.get('count', 0)} 次")
+            return data
+        except Exception as e:
+            print(f"[授权] ⚠️ 加载配置失败: {e}")
             return None
     
     def save_usage_data(self, data: dict):
         """保存使用记录"""
         try:
+            print(f"[授权] 准备保存: count={data.get('count', 0)}")
             encrypted = self._encrypt_data(data)
+            
+            # 确保目录存在
+            if not os.path.exists(self.config_dir):
+                os.makedirs(self.config_dir, exist_ok=True)
+                print(f"[授权] 重新创建配置目录")
+            
             with open(self.config_file, 'w') as f:
                 f.write(encrypted)
+            
+            print(f"[授权] ✅ 保存成功: {self.config_file}")
+            
             # 设置为隐藏文件（Windows）
             if platform.system() == 'Windows':
                 try:
                     import ctypes
                     ctypes.windll.kernel32.SetFileAttributesW(self.config_file, 2)  # FILE_ATTRIBUTE_HIDDEN
-                except:
-                    pass
+                    print(f"[授权] 文件已设置为隐藏")
+                except Exception as e:
+                    print(f"[授权] 设置隐藏属性失败: {e}")
         except Exception as e:
-            print(f"保存使用记录失败: {e}")
+            print(f"[授权] ❌ 保存使用记录失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     def check_device(self) -> Tuple[bool, str]:
         """
@@ -138,15 +168,23 @@ class LicenseManager:
         检查并更新使用次数（每次处理文档时调用）
         返回: (是否允许使用, 消息)
         """
+        print(f"\n[授权] ========== 开始检查并更新使用次数 ==========")
+        
         mac = self.get_mac_address()
         if not mac:
+            print(f"[授权] ❌ 无法获取MAC地址")
             return False, "无法获取设备信息，程序无法运行"
         
+        print(f"[授权] MAC地址: {mac}")
+        
         device_hash = self._get_device_hash(mac)
+        print(f"[授权] 设备哈希: {device_hash[:16]}...")
+        
         usage_data = self.load_usage_data()
         
         if usage_data is None:
             # 不应该发生，但为了安全还是处理
+            print(f"[授权] 配置不存在，初始化")
             usage_data = {
                 'device': device_hash,
                 'count': 0,
@@ -156,19 +194,29 @@ class LicenseManager:
         
         # 验证设备
         if usage_data.get('device') != device_hash:
+            print(f"[授权] ❌ 设备不匹配")
             return False, "设备已损坏"
         
         # 检查使用次数
         current_count = usage_data.get('count', 0)
+        print(f"[授权] 当前使用次数: {current_count}/{self.MAX_USAGE_COUNT}")
+        
         if current_count >= self.MAX_USAGE_COUNT:
+            print(f"[授权] ❌ 已达到使用上限")
             return False, "程序已损坏"
         
         # 更新使用次数
         usage_data['count'] = current_count + 1
         usage_data['last_use'] = datetime.now().isoformat()
+        
+        print(f"[授权] 更新使用次数: {current_count} → {usage_data['count']}")
+        
         self.save_usage_data(usage_data)
         
         remaining = self.MAX_USAGE_COUNT - usage_data['count']
+        print(f"[授权] ✅ 检查通过，剩余次数: {remaining}")
+        print(f"[授权] ========== 检查完成 ==========\n")
+        
         return True, f"剩余次数: {remaining}"
     
     def get_usage_info(self) -> str:
