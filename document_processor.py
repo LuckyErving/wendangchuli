@@ -75,6 +75,99 @@ class DocumentProcessor:
             except:
                 return False, "⚠️ 未检测到 LibreOffice"
     
+    def preprocess_docx_files(self, folder_path: str, progress_callback=None):
+        """预处理：将所有.docx文件转换为PDF并保存到同目录"""
+        from docx import Document
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.pdfgen import canvas
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.lib.units import inch
+        import io
+        
+        print("\n" + "=" * 50)
+        print("开始预处理Word文档...")
+        print("=" * 50)
+        
+        # 查找所有.docx文件
+        docx_files = []
+        for root, dirs, filenames in os.walk(folder_path):
+            for filename in filenames:
+                if filename.lower().endswith('.docx') and not filename.startswith('~'):
+                    filepath = os.path.join(root, filename)
+                    docx_files.append(filepath)
+        
+        if not docx_files:
+            print("没有找到.docx文件，跳过预处理")
+            return []
+        
+        print(f"找到 {len(docx_files)} 个Word文档")
+        converted_files = []
+        
+        for i, docx_path in enumerate(docx_files):
+            try:
+                filename = os.path.basename(docx_path)
+                print(f"\n[{i+1}/{len(docx_files)}] 正在转换: {filename}")
+                
+                if progress_callback:
+                    progress = int((i / len(docx_files)) * 20)  # 预处理占20%
+                    progress_callback(progress, f"预处理Word文档 ({i+1}/{len(docx_files)})")
+                
+                # 生成PDF文件路径（同目录，同名，.pdf后缀）
+                pdf_path = os.path.splitext(docx_path)[0] + '.pdf'
+                
+                # 如果PDF已存在，跳过
+                if os.path.exists(pdf_path):
+                    print(f"  PDF已存在，跳过: {os.path.basename(pdf_path)}")
+                    converted_files.append(pdf_path)
+                    continue
+                
+                # 使用python-docx读取Word内容
+                doc = Document(docx_path)
+                
+                # 创建PDF
+                c = canvas.Canvas(pdf_path, pagesize=A4)
+                width, height = A4
+                
+                # 设置字体（使用系统自带字体）
+                try:
+                    c.setFont("Helvetica", 12)
+                except:
+                    pass
+                
+                y_position = height - 50
+                line_height = 20
+                
+                # 写入文档内容
+                c.drawString(50, y_position, f"Document: {filename}")
+                y_position -= line_height * 2
+                
+                for paragraph in doc.paragraphs:
+                    if paragraph.text.strip():
+                        text = paragraph.text[:100]  # 限制长度
+                        try:
+                            c.drawString(50, y_position, text)
+                            y_position -= line_height
+                            
+                            if y_position < 50:  # 换页
+                                c.showPage()
+                                y_position = height - 50
+                        except:
+                            # 如果有特殊字符，跳过
+                            pass
+                
+                c.save()
+                converted_files.append(pdf_path)
+                print(f"  ✓ 转换成功: {os.path.basename(pdf_path)}")
+                
+            except Exception as e:
+                print(f"  ✗ 转换失败: {str(e)}")
+                continue
+        
+        print(f"\n预处理完成！成功转换 {len(converted_files)} 个文档")
+        print("=" * 50 + "\n")
+        return converted_files
+    
     def find_files(self, directory: str) -> List[str]:
         """递归查找所有文件"""
         files = []
@@ -225,8 +318,14 @@ class DocumentProcessor:
             if not os.path.isdir(folder_path):
                 raise Exception("选择的路径不是有效的文件夹")
             
+            # 新增：预处理Word文档
             if progress_callback:
-                progress_callback(10, "正在扫描文件...")
+                progress_callback(5, "预处理Word文档...")
+            
+            self.preprocess_docx_files(folder_path, progress_callback)
+            
+            if progress_callback:
+                progress_callback(20, "正在扫描文件...")
             
             all_files = self.find_files(folder_path)
             print(f"找到 {len(all_files)} 个文件")
@@ -242,7 +341,7 @@ class DocumentProcessor:
                     print(f"{doc_type}: {len(files)} 个文件")
             
             if progress_callback:
-                progress_callback(30, "正在转换文档...")
+                progress_callback(40, "正在转换文档...")
             
             pdf_temp_dir = tempfile.mkdtemp(prefix='pdf_temp_')
             ordered_pdfs = []
@@ -277,7 +376,7 @@ class DocumentProcessor:
                             print(f"  ✗ 转换出错: {str(e)}")
                     processed += 1
                     if progress_callback and total_files > 0:
-                        progress = 30 + int((processed / total_files) * 50)
+                        progress = 40 + int((processed / total_files) * 45)
                         progress_callback(progress, f"正在处理: {doc_type}... ({processed}/{total_files})")
             
             if not ordered_pdfs:
