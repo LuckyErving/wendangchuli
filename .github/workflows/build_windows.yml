@@ -30,10 +30,10 @@ jobs:
     - name: Obfuscate code with PyArmor
       run: |
         pyarmor gen --output dist_protected document_processor.py license_manager.py
-        copy /Y dist_protected\document_processor.py document_processor.py
-        copy /Y dist_protected\license_manager.py license_manager.py
-        if exist pyarmor_runtime_000000 rmdir /S /Q pyarmor_runtime_000000
-        xcopy /E /I /Y dist_protected\pyarmor_runtime_000000 pyarmor_runtime_000000
+        Copy-Item -Path "dist_protected\document_processor.py" -Destination "document_processor.py" -Force
+        Copy-Item -Path "dist_protected\license_manager.py" -Destination "license_manager.py" -Force
+        if (Test-Path "pyarmor_runtime_000000") { Remove-Item -Recurse -Force "pyarmor_runtime_000000" }
+        Copy-Item -Path "dist_protected\pyarmor_runtime_000000" -Destination "pyarmor_runtime_000000" -Recurse -Force
         
     - name: Build executable
       run: pyinstaller document_processor.spec
