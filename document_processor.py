@@ -15,9 +15,144 @@ import subprocess
 from typing import List, Tuple
 from PIL import Image
 import img2pdf
+import hashlib
+import json
+import uuid
+import platform
+from datetime import datetime
 
 # 消除macOS的Tk废弃警告
 os.environ['TK_SILENCE_DEPRECATION'] = '1'
+
+
+class LicenseManager:
+    """设备授权管理器"""
+    
+    MAX_USAGE_COUNT = 200  # 最大使用次数
+    
+    def __init__(self):
+        # 使用隐藏的配置文件存储使用记录
+        if platform.system() == 'Windows':
+            self.config_dir = os.path.join(os.environ.get('APPDATA', ''), '.docproc')
+        else:
+            self.config_dir = os.path.join(os.path.expanduser('~'), '.docproc')
+        
+        os.makedirs(self.config_dir, exist_ok=True)
+        self.config_file = os.path.join(self.config_dir, '.lic')
+    
+    def get_mac_address(self):
+        """获取设备MAC地址"""
+        try:
+            mac = ':'.join(['{:02x}'.format((uuid.getnode() >> elements) & 0xff) 
+                           for elements in range(0, 48, 8)][::-1])
+            return mac
+        except:
+            return None
+    
+    def _encrypt_data(self, data: dict) -> str:
+        """简单加密数据（使用base64混淆）"""
+        import base64
+        json_str = json.dumps(data)
+        # 多次base64编码混淆
+        encrypted = json_str.encode('utf-8')
+        for _ in range(3):
+            encrypted = base64.b64encode(encrypted)
+        return encrypted.decode('utf-8')
+    
+    def _decrypt_data(self, encrypted: str) -> dict:
+        """解密数据"""
+        import base64
+        try:
+            decrypted = encrypted.encode('utf-8')
+            for _ in range(3):
+                decrypted = base64.b64decode(decrypted)
+            return json.loads(decrypted.decode('utf-8'))
+        except:
+            return None
+    
+    def _get_device_hash(self, mac: str) -> str:
+        """生成设备指纹哈希"""
+        # 使用MAC地址和一个盐值生成哈希
+        salt = "doc_processor_v1_2025"
+        return hashlib.sha256(f"{mac}{salt}".encode()).hexdigest()
+    
+    def load_usage_data(self):
+        """加载使用记录"""
+        if not os.path.exists(self.config_file):
+            return None
+        
+        try:
+            with open(self.config_file, 'r') as f:
+                encrypted = f.read()
+            return self._decrypt_data(encrypted)
+        except:
+            return None
+    
+    def save_usage_data(self, data: dict):
+        """保存使用记录"""
+        try:
+            encrypted = self._encrypt_data(data)
+            with open(self.config_file, 'w') as f:
+                f.write(encrypted)
+            # 设置为隐藏文件（Windows）
+            if platform.system() == 'Windows':
+                try:
+                    import ctypes
+                    ctypes.windll.kernel32.SetFileAttributesW(self.config_file, 2)  # FILE_ATTRIBUTE_HIDDEN
+                except:
+                    pass
+        except Exception as e:
+            print(f"保存使用记录失败: {e}")
+    
+    def check_and_update_usage(self) -> Tuple[bool, str]:
+        """
+        检查并更新使用次数
+        返回: (是否允许使用, 消息)
+        """
+        mac = self.get_mac_address()
+        if not mac:
+            return False, "无法获取设备信息，程序无法运行"
+        
+        device_hash = self._get_device_hash(mac)
+        usage_data = self.load_usage_data()
+        
+        if usage_data is None:
+            # 首次使用
+            usage_data = {
+                'device': device_hash,
+                'count': 1,
+                'first_use': datetime.now().isoformat(),
+                'last_use': datetime.now().isoformat()
+            }
+            self.save_usage_data(usage_data)
+            return True, f": {self.MAX_USAGE_COUNT - 1}"
+        
+        # 验证设备
+        if usage_data.get('device') != device_hash:
+            return False, "已损坏"
+        
+        # 检查使用次数
+        current_count = usage_data.get('count', 0)
+        if current_count >= self.MAX_USAGE_COUNT:
+            return False, "程序已损坏"
+        
+        # 更新使用次数
+        usage_data['count'] = current_count + 1
+        usage_data['last_use'] = datetime.now().isoformat()
+        self.save_usage_data(usage_data)
+        
+        remaining = self.MAX_USAGE_COUNT - usage_data['count']
+        return True, f"已损坏: {remaining}"
+    
+    def get_usage_info(self) -> str:
+        """获取使用信息"""
+        usage_data = self.load_usage_data()
+        if not usage_data:
+            return f"已损坏: {self.MAX_USAGE_COUNT}"
+        
+        count = usage_data.get('count', 0)
+        remaining = self.MAX_USAGE_COUNT - count
+        return f": {count} ，: {remaining} "
 
 
 class DocumentProcessor:
@@ -439,9 +574,24 @@ class SimpleGUI:
     """简洁的图形界面"""
     
     def __init__(self):
+        # 首先检查授权
+        self.license_manager = LicenseManager()
+        can_use, message = self.license_manager.check_and_update_usage()
+        
+        if not can_use:
+            # 创建临时窗口显示错误
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(
+                "程序已损坏", 
+                f"抱歉，程序文件已损坏，无法继续使用。\n\n错误信息: {message}\n\n请联系技术支持获取新版本。"
+            )
+            root.destroy()
+            exit(1)
+        
         self.root = tk.Tk()
         self.root.title("文档处理器")
-        self.root.geometry("600x550")  # 稍微增加高度以容纳警告信息
+        self.root.geometry("600x600")  # 增加高度以容纳授权信息
         
         # 强制设置背景色
         self.root.configure(bg='#e8e8e8')
@@ -456,6 +606,9 @@ class SimpleGUI:
         self.create_widgets()
         self.center_window()
         
+        # 显示授权信息
+        self.show_license_info(message)
+        
         # 如果Word/LibreOffice不可用，显示警告
         if not self.word_available:
             self.show_word_warning()
@@ -466,11 +619,27 @@ class SimpleGUI:
         # 用户可以选择继续（如果没有Word文档）或退出安装
         pass  # 警告信息已在界面中显示
     
+    def show_license_info(self, message):
+        """显示授权信息的提示框"""
+        # 如果剩余次数少于20次，显示警告
+        usage_info = self.license_manager.get_usage_info()
+        if ":" in usage_info:
+            remaining_str = usage_info.split(":")[1].strip().split(" ")[0]
+            try:
+                remaining = int(remaining_str)
+                if remaining <= 20:
+                    messagebox.showwarning(
+                        "",
+                        f"提示：已损坏{usage_info}\n\n请注意！"
+                    )
+            except:
+                pass
+    
     def center_window(self):
         """窗口居中"""
         self.root.update_idletasks()
         width = 600
-        height = 550
+        height = 600
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f'{width}x{height}+{x}+{y}')
@@ -486,6 +655,20 @@ class SimpleGUI:
             fg='#2c3e50'
         )
         title.pack(pady=20)
+        
+        # 授权信息
+        license_frame = tk.Frame(self.root, bg='#e8e8e8')
+        license_frame.pack(fill=tk.X, padx=20, pady=(0, 5))
+        
+        usage_info = self.license_manager.get_usage_info()
+        license_label = tk.Label(
+            license_frame,
+            text=f"📋 {usage_info}",
+            font=("Arial", 9),
+            bg='#e8e8e8',
+            fg='#7f8c8d'
+        )
+        license_label.pack(anchor=tk.E)
         
         # Word转换器状态提示
         status_frame = tk.Frame(self.root, bg='#e8e8e8')
