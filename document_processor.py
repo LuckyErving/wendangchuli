@@ -104,9 +104,38 @@ class LicenseManager:
         except Exception as e:
             print(f"保存使用记录失败: {e}")
     
+    def check_device(self) -> Tuple[bool, str]:
+        """
+        仅检查设备绑定，不更新计数（用于程序启动时）
+        返回: (是否允许使用, 消息)
+        """
+        mac = self.get_mac_address()
+        if not mac:
+            return False, "无法获取设备信息"
+        
+        device_hash = self._get_device_hash(mac)
+        usage_data = self.load_usage_data()
+        
+        if usage_data is None:
+            # 首次使用，初始化配置
+            usage_data = {
+                'device': device_hash,
+                'count': 0,
+                'first_use': datetime.now().isoformat(),
+                'last_use': datetime.now().isoformat()
+            }
+            self.save_usage_data(usage_data)
+            return True, f"首次使用"
+        
+        # 验证设备
+        if usage_data.get('device') != device_hash:
+            return False, "设备不匹配"
+        
+        return True, "设备验证成功"
+    
     def check_and_update_usage(self) -> Tuple[bool, str]:
         """
-        检查并更新使用次数
+        检查并更新使用次数（每次处理文档时调用）
         返回: (是否允许使用, 消息)
         """
         mac = self.get_mac_address()
@@ -117,19 +146,17 @@ class LicenseManager:
         usage_data = self.load_usage_data()
         
         if usage_data is None:
-            # 首次使用
+            # 不应该发生，但为了安全还是处理
             usage_data = {
                 'device': device_hash,
-                'count': 1,
+                'count': 0,
                 'first_use': datetime.now().isoformat(),
                 'last_use': datetime.now().isoformat()
             }
-            self.save_usage_data(usage_data)
-            return True, f": {self.MAX_USAGE_COUNT - 1}"
         
         # 验证设备
         if usage_data.get('device') != device_hash:
-            return False, "已损坏"
+            return False, "设备已损坏"
         
         # 检查使用次数
         current_count = usage_data.get('count', 0)
@@ -142,17 +169,17 @@ class LicenseManager:
         self.save_usage_data(usage_data)
         
         remaining = self.MAX_USAGE_COUNT - usage_data['count']
-        return True, f"已损坏: {remaining}"
+        return True, f"剩余次数: {remaining}"
     
     def get_usage_info(self) -> str:
         """获取使用信息"""
         usage_data = self.load_usage_data()
         if not usage_data:
-            return f"已损坏: {self.MAX_USAGE_COUNT}"
+            return f"剩余使用次数: {self.MAX_USAGE_COUNT}"
         
         count = usage_data.get('count', 0)
         remaining = self.MAX_USAGE_COUNT - count
-        return f": {count} ，: {remaining} "
+        return f"已使用: {count} 次，剩余: {remaining} 次"
 
 
 class DocumentProcessor:
@@ -574,9 +601,9 @@ class SimpleGUI:
     """简洁的图形界面"""
     
     def __init__(self):
-        # 首先检查授权
+        # 首先检查设备绑定（不计数）
         self.license_manager = LicenseManager()
-        can_use, message = self.license_manager.check_and_update_usage()
+        can_use, message = self.license_manager.check_device()
         
         if not can_use:
             # 创建临时窗口显示错误
@@ -606,8 +633,8 @@ class SimpleGUI:
         self.create_widgets()
         self.center_window()
         
-        # 显示授权信息
-        self.show_license_info(message)
+        # 显示授权信息（启动时不显示警告）
+        # self.show_license_info(message)
         
         # 如果Word/LibreOffice不可用，显示警告
         if not self.word_available:
@@ -634,6 +661,20 @@ class SimpleGUI:
                     )
             except:
                 pass
+    
+    def update_license_display(self):
+        """更新界面上的授权信息显示"""
+        try:
+            usage_info = self.license_manager.get_usage_info()
+            # 查找并更新授权标签
+            for widget in self.root.winfo_children():
+                if isinstance(widget, tk.Frame):
+                    for child in widget.winfo_children():
+                        if isinstance(child, tk.Label) and "📋" in child.cget("text"):
+                            child.config(text=f"📋 {usage_info}")
+                            break
+        except:
+            pass
     
     def center_window(self):
         """窗口居中"""
@@ -835,7 +876,37 @@ class SimpleGUI:
             messagebox.showerror("错误", "请先选择文件夹")
             return
         
+        # 检查并更新使用次数
+        can_use, usage_message = self.license_manager.check_and_update_usage()
+        if not can_use:
+            messagebox.showerror(
+                "程序已损坏",
+                f"抱歉，程序文件已损坏，无法继续使用。\n\n错误信息: {usage_message}\n\n请联系技术支持获取新版本。"
+            )
+            return
+        
+        # 更新界面显示的使用次数
+        self.update_license_display()
+        
+        # 如果剩余次数少于20次，显示警告
+        usage_info = self.license_manager.get_usage_info()
+        if "剩余:" in usage_info or "，:" in usage_info:
+            try:
+                # 提取剩余次数
+                parts = usage_info.split("，:")
+                if len(parts) > 1:
+                    remaining_str = parts[1].strip().split(" ")[0]
+                    remaining = int(remaining_str)
+                    if remaining <= 20:
+                        messagebox.showwarning(
+                            "使用次数提醒",
+                            f"提示：{usage_info}\n\n即将达到使用上限，请注意！"
+                        )
+            except:
+                pass
+        
         print(f"选择的文件夹: {self.selected_folder}")
+        print(f"使用次数信息: {usage_message}")
         
         # 先让用户选择保存位置
         folder_name = os.path.basename(self.selected_folder)
