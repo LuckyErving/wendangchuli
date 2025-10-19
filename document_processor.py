@@ -666,15 +666,12 @@ class SimpleGUI:
         """更新界面上的授权信息显示"""
         try:
             usage_info = self.license_manager.get_usage_info()
-            # 查找并更新授权标签
-            for widget in self.root.winfo_children():
-                if isinstance(widget, tk.Frame):
-                    for child in widget.winfo_children():
-                        if isinstance(child, tk.Label) and "📋" in child.cget("text"):
-                            child.config(text=f"📋 {usage_info}")
-                            break
-        except:
-            pass
+            if hasattr(self, 'license_label'):
+                self.license_label.config(text=f"📋 {usage_info}")
+                self.root.update()
+            print(f"[界面更新] {usage_info}")
+        except Exception as e:
+            print(f"更新界面显示失败: {e}")
     
     def center_window(self):
         """窗口居中"""
@@ -702,14 +699,14 @@ class SimpleGUI:
         license_frame.pack(fill=tk.X, padx=20, pady=(0, 5))
         
         usage_info = self.license_manager.get_usage_info()
-        license_label = tk.Label(
+        self.license_label = tk.Label(
             license_frame,
             text=f"📋 {usage_info}",
             font=("Arial", 9),
             bg='#e8e8e8',
             fg='#7f8c8d'
         )
-        license_label.pack(anchor=tk.E)
+        self.license_label.pack(anchor=tk.E)
         
         # Word转换器状态提示
         status_frame = tk.Frame(self.root, bg='#e8e8e8')
@@ -940,6 +937,8 @@ class SimpleGUI:
             
             try:
                 self.progress_label.config(text="✅ 处理完成！", fg='#27ae60')
+                # 再次更新使用次数显示（确保显示最新状态）
+                self.update_license_display()
                 self.root.update()
             except:
                 pass
