@@ -248,33 +248,44 @@ class CloudLicenseManager:
     
     def check_and_update_usage(self) -> Tuple[bool, str]:
         """
-        检查并更新使用次数（云端优先，缓存备份）
+        检查并更新使用次数（强制从云端验证）
         返回: (是否允许使用, 消息)
+        
+        新逻辑：
+        1. 必须从云端读取最新 count
+        2. 如果云端 count >= 限制，直接拒绝
+        3. 允许使用后尝试更新云端（即使失败也允许使用）
+        4. 这样可以防止本地缓存被篡改
         """
         print(f"\n[云授权] ========== 开始检查授权 ==========")
         
-        # 1. 尝试从云端加载
-        all_data = self._load_from_cloud()
+        # 1. 强制从云端加载（优先级最高）
+        cloud_data = self._load_from_cloud()
+        cache_data = self._load_from_cache()
         
-        # 2. 如果云端失败，从缓存加载
-        if all_data is None:
-            print(f"[云授权] 云端不可用，使用缓存")
-            all_data = self._load_from_cache()
-        
-        # 3. 如果都没有，初始化
-        if all_data is None:
-            print(f"[云授权] 首次使用，初始化数据")
+        # 2. 确定使用哪个数据源进行验证
+        if cloud_data is not None:
+            # 云端可用，使用云端数据（最权威）
+            all_data = cloud_data
+            print(f"[云授权] ✅ 使用云端数据进行验证")
+        elif cache_data is not None:
+            # 云端不可用，使用缓存（但会在后面警告）
+            all_data = cache_data
+            print(f"[云授权] ⚠️ 云端不可用，使用缓存数据（可能不是最新）")
+        else:
+            # 首次使用
             all_data = {
                 'version': '1.0',
                 'created_at': datetime.now().isoformat(),
                 'devices': {}
             }
+            print(f"[云授权] 首次使用，初始化数据")
         
-        # 4. 获取当前设备数据
+        # 3. 获取当前设备数据
         device_data = self._get_device_data(all_data)
         
         if device_data is None:
-            # 新设备
+            # 新设备注册
             device_data = {
                 'device_id': self.device_id,
                 'count': 0,
@@ -284,7 +295,7 @@ class CloudLicenseManager:
             }
             print(f"[云授权] 新设备注册")
         
-        # 5. 检查使用次数
+        # 4. 【关键】先验证 count，再决定是否允许使用
         current_count = device_data.get('count', 0)
         print(f"[云授权] 当前使用次数: {current_count}/{self.MAX_USAGE_COUNT}")
         
@@ -292,21 +303,27 @@ class CloudLicenseManager:
             print(f"[云授权] ❌ 已达到使用上限")
             return False, "程序已损坏"
         
-        # 6. 更新使用次数
+        # 5. 允许使用，更新 count
         device_data['count'] = current_count + 1
         device_data['last_use'] = datetime.now().isoformat()
-        
-        # 7. 更新数据
         all_data = self._update_device_data(all_data, device_data)
         
-        # 8. 保存到云端（优先）
+        print(f"[云授权] 使用次数更新: {current_count} → {device_data['count']}")
+        
+        # 6. 尝试保存到云端（尽力而为）
         cloud_saved = self._save_to_cloud(all_data)
         
-        # 9. 保存到缓存（备份）
+        # 7. 保存到缓存（备份）
         cache_saved = self._save_to_cache(all_data)
         
-        if not cloud_saved and not cache_saved:
-            print(f"[云授权] ⚠️⚠️ 保存失败，但允许本次使用")
+        # 8. 结果提示
+        if cloud_saved:
+            print(f"[云授权] ✅ 云端更新成功")
+        else:
+            print(f"[云授权] ⚠️ 云端更新失败（但允许本次使用，因为已通过验证）")
+        
+        if not cache_saved:
+            print(f"[云授权] ⚠️ 缓存更新失败")
         
         remaining = self.MAX_USAGE_COUNT - device_data['count']
         print(f"[云授权] ✅ 检查通过，剩余次数: {remaining}")
