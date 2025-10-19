@@ -11,6 +11,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     
+    env:
+      DOC_PROC_GITHUB_TOKEN: ${{ secrets.DOC_PROC_GITHUB_TOKEN }}
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
